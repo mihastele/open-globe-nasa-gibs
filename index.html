@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Earth Explorer</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
+  </head>
+  <body>
+    <div id="cesiumContainer"></div>
+
+    <!-- Top bar: search + basemap switcher -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◉</span>
+        <span class="brand-text">Earth Explorer</span>
+      </div>
+
+      <div id="searchBox" class="search-box">
+        <input
+          id="searchInput"
+          type="search"
+          placeholder="Search for a place  (press / )"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <ul id="searchResults" class="search-results hidden"></ul>
+      </div>
+
+      <div id="layersRow" class="layers-row"></div>
+    </header>
+
+    <!-- Left panel: layers + places -->
+    <aside class="side-panel">
+      <section class="panel">
+        <h2>Layers</h2>
+
+        <label class="switch">
+          <input id="terrainToggle" type="checkbox" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">3D Terrain</span>
+        </label>
+
+        <label class="switch">
+          <input id="buildingsToggle" type="checkbox" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">3D Buildings</span>
+        </label>
+
+        <label class="switch">
+          <input id="gibsToggle" type="checkbox" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">NASA Time Machine</span>
+        </label>
+
+        <div id="gibsPanel" class="gibs-panel hidden">
+          <label class="field">
+            <span>Layer</span>
+            <select id="gibsLayer"></select>
+          </label>
+          <label class="field">
+            <span>Date</span>
+            <input id="gibsDate" type="date" />
+          </label>
+          <p class="hint">Daily true-colour imagery from NASA GIBS. Scrub the date to see the planet change.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Jump to</h2>
+        <div id="placesList" class="places-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Shortcuts</h2>
+        <ul class="shortcuts">
+          <li><kbd>/</kbd> search</li>
+          <li><kbd>B</kbd> 3D buildings</li>
+          <li><kbd>T</kbd> terrain</li>
+          <li><kbd>N</kbd> NASA time machine</li>
+          <li><kbd>Click</kbd> street-level view</li>
+        </ul>
+      </section>
+    </aside>
+
+    <!-- Bottom-left readout -->
+    <div class="readout">
+      <span id="coordReadout">—</span>
+      <span class="readout-sep"></span>
+      <span id="heightReadout">—</span>
+      <span class="readout-sep"></span>
+      <span id="zoomReadout">—</span>
+    </div>
+
+    <!-- Status pill -->
+    <div id="statusPill" class="status-pill hidden"></div>
+
+    <!-- Street-level viewer -->
+    <div id="streetPanel" class="street-panel hidden">
+      <div class="street-head">
+        <span>Street View</span>
+        <button id="streetClose" class="icon-btn" aria-label="Close street view">✕</button>
+      </div>
+      <img id="streetImage" class="street-image" alt="" />
+      <div id="streetMeta" class="street-meta"></div>
+      <div class="street-controls">
+        <button id="streetPrev" class="icon-btn">‹</button>
+        <button id="streetNext" class="icon-btn">›</button>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="hintToast" class="hint-toast">
+      Click anywhere on the map for street-level imagery · <kbd>/</kbd> to search
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
