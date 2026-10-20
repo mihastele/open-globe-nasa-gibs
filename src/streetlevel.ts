@@ -61,6 +61,12 @@ const PROBE_OFFSETS: [number, number][] = [
   [0, -0.006],
 ];
 
+/** How many offsets to query at once. */
+const PROBE_BATCH = 4;
+
+/** Give up on a single probe after this long. */
+const REQUEST_TIMEOUT_MS = 8000;
+
 /** Normalise the various URL fields KartaView returns into a usable image URL. */
 function resolveImageUrl(record: KartaViewRecord): string {
   if (record.fileurlProc) return record.fileurlProc;
@@ -96,7 +102,7 @@ function toStreetPhoto(record: KartaViewRecord): StreetPhoto {
 /** Query a single point and return the raw records. */
 async function queryPoint(lat: number, lng: number): Promise<KartaViewRecord[]> {
   const url = `${KARTAVIEW_URL}?lat=${lat}&lng=${lng}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!res.ok) return [];
   const json = (await res.json()) as KartaViewResponse;
   return json.result?.data ?? [];
@@ -105,24 +111,38 @@ async function queryPoint(lat: number, lng: number): Promise<KartaViewRecord[]> 
 /**
  * Fetch street-level photos near a coordinate.
  *
- * Probes a small ring of nearby points because the API's effective radius is
- * only a few hundred metres.
+ * The API's effective radius is only a few hundred metres, so a single query at
+ * an arbitrary clicked point usually comes back empty even in a city with good
+ * coverage. We therefore probe a small ring of offsets around the point.
+ *
+ * The offsets are queried in small parallel batches (nearest first) so the
+ * common case — a hit on the first try — is a single request, and the worst
+ * case stays well under a second.
  */
 export async function fetchStreetPhotos(
   lat: number,
   lng: number,
 ): Promise<StreetPhoto[]> {
-  for (const [dLat, dLng] of PROBE_OFFSETS) {
-    let records: KartaViewRecord[];
-    try {
-      records = await queryPoint(lat + dLat, lng + dLng);
-    } catch {
-      records = [];
-    }
-    if (records.length === 0) continue;
+  for (let start = 0; start < PROBE_OFFSETS.length; start += PROBE_BATCH) {
+    const batch = PROBE_OFFSETS.slice(start, start + PROBE_BATCH);
 
-    const photos = records.map(toStreetPhoto).filter((p) => p.url.length > 0);
-    if (photos.length > 0) return photos;
+    const results = await Promise.all(
+      batch.map(async ([dLat, dLng]) => {
+        try {
+          const records = await queryPoint(lat + dLat, lng + dLng);
+          return records
+            .map(toStreetPhoto)
+            .filter((p) => p.url.length > 0);
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    // Keep the nearest hit in the batch.
+    for (const photos of results) {
+      if (photos.length > 0) return photos;
+    }
   }
   return [];
 }

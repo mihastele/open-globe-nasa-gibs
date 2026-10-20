@@ -246,25 +246,27 @@ if (resultCount > 0) {
 
 /* ---------------------------------------------------------- street level */
 
-// Fly somewhere with KartaView coverage (Berlin).
+// Fly somewhere with KartaView coverage (Berlin), looking straight down so the
+// centre of the screen is exactly the camera's ground point. A fixed screen
+// fraction would land on a varying coordinate and be flaky.
 await page.evaluate(() => {
   const { viewer } = window.earthExplorer;
   const Cartesian3 = viewer.camera.position.constructor;
   const rad = (d) => (d * Math.PI) / 180;
   viewer.camera.setView({
     destination: Cartesian3.fromDegrees(13.405, 52.52, 3000),
-    orientation: { heading: rad(0), pitch: rad(-70), roll: 0 },
+    orientation: { heading: 0, pitch: rad(-90), roll: 0 },
   });
 });
-await page.waitForTimeout(6000);
+await page.waitForTimeout(7000);
 
 // Click the globe with real pointer events (Cesium listens for pointerdown/up).
-// The target is a spot in central Berlin that has KartaView coverage.
 const box = await page.locator('canvas').boundingBox();
-await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.45);
+await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
 await page.mouse.down();
+await page.waitForTimeout(150);
 await page.mouse.up();
-await page.waitForTimeout(16000);
+await page.waitForTimeout(18000);
 
 const street = await page.evaluate(() => {
   const panel = document.getElementById('streetPanel');
