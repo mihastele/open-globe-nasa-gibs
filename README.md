@@ -27,8 +27,12 @@ Then open http://127.0.0.1:5173/
 ```bash
 npm run build      # production bundle in dist/
 npm run preview    # serve the production build
-npm test           # end-to-end smoke test (needs Chrome + a running dev server)
+npm test           # e2e smoke test against the dev server
+npm run test:prod  # build, serve the bundle, and e2e-test the production build
 ```
+
+`npm test` needs a dev server running (`npm run dev`) and Chrome installed.
+`npm run test:prod` handles the build and server itself.
 
 ## Data sources
 
@@ -69,7 +73,20 @@ src/
   config.ts        all endpoints, layer presets and city list
 tests/
   e2e.mjs          Playwright smoke test covering every feature
+  screenshot.mjs   captures the README screenshot
 ```
+
+## Testing
+
+`tests/e2e.mjs` drives a real Chrome through Playwright and asserts 13 behaviours:
+canvas sizing, that satellite imagery actually rasterises pixels, the terrain
+provider, building primitives, the NASA layer and its date scrubbing, place
+search, camera fly-to, the street-level view, basemap switching, and a clean
+console.
+
+It runs against the dev server by default and against the built bundle with
+`--prod`. The assertions deliberately avoid class names, because minification
+renames them in production builds.
 
 ## Licence
 

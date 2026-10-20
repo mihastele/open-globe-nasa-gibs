@@ -3,10 +3,77 @@
  *
  * Drives a real Chrome via Playwright: loads the app, checks the globe renders,
  * exercises each layer toggle, place search, and the street-level view.
+ *
+ *   node tests/e2e.mjs          → test the dev server (default)
+ *   node tests/e2e.mjs --prod   → build and test the production bundle
  */
 import { chromium } from 'playwright';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
-const BASE = process.env.APP_URL || 'http://127.0.0.1:5173/';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = resolve(__dirname, '..');
+
+const PROD = process.argv.includes('--prod');
+
+/** Path to the locally installed vite binary (avoids npx, which fails to spawn here). */
+const VITE_BIN = resolve(
+  projectRoot,
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'vite.cmd' : 'vite',
+);
+
+/**
+ * Windows needs `shell: true` to launch a `.cmd` shim; on POSIX the binary
+ * can be executed directly.
+ */
+const SPAWN_OPTS = { cwd: projectRoot, shell: process.platform === 'win32' };
+
+/** Start `vite preview` on a free port and resolve once it answers. */
+async function startPreview() {
+  const port = 4180;
+  const child = spawn(
+    VITE_BIN,
+    ['preview', '--port', String(port), '--host', '127.0.0.1', '--strictPort'],
+    { ...SPAWN_OPTS, stdio: 'pipe' },
+  );
+
+  const url = `http://127.0.0.1:${port}/`;
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const res = await fetch(url);
+      if (res.ok) return { child, url };
+    } catch {
+      /* not up yet */
+    }
+  }
+  child.kill();
+  throw new Error('vite preview did not start');
+}
+
+let server = null;
+let BASE = process.env.APP_URL || 'http://127.0.0.1:5173/';
+
+if (PROD) {
+  console.log('Building production bundle (mode=e2e)…');
+  await new Promise((resolveBuild, rejectBuild) => {
+    const build = spawn(VITE_BIN, ['build', '--mode', 'e2e'], {
+      ...SPAWN_OPTS,
+      stdio: 'inherit',
+    });
+    build.on('exit', (code) =>
+      code === 0 ? resolveBuild() : rejectBuild(new Error(`build failed (${code})`)),
+    );
+  });
+
+  console.log('Starting vite preview…');
+  server = await startPreview();
+  BASE = server.url;
+  console.log(`Testing production build at ${BASE}\n`);
+}
 
 const results = [];
 function check(name, ok, detail = '') {
@@ -97,12 +164,28 @@ check(
 /* ------------------------------------------------------------ 3D terrain */
 
 // The checkbox itself is visually hidden behind a styled switch, so click the label.
+// Capture the provider before the toggle: the app starts on the flat ellipsoid,
+// so a changed provider afterwards means real elevation was attached.
+const terrainBefore = await page.evaluate(
+  () => window.earthExplorer.viewer.terrainProvider,
+);
 await page.click('label.switch:has(#terrainToggle)');
 await page.waitForTimeout(9000);
-const terrainName = await page.evaluate(
-  () => window.earthExplorer.viewer.terrainProvider.constructor.name,
+
+// Assert on behaviour, not on the class name: production builds minify it.
+const terrain = await page.evaluate((before) => {
+  const provider = window.earthExplorer.viewer.terrainProvider;
+  return {
+    changed: provider !== before,
+    hasLevelZeroError: typeof provider.getLevelMaximumGeometricError === 'function',
+    tilesAvailable: provider.availability !== undefined,
+  };
+}, terrainBefore);
+check(
+  '3D terrain provider active',
+  terrain.changed && terrain.hasLevelZeroError,
+  JSON.stringify(terrain),
 );
-check('3D terrain provider active', terrainName === 'ArcGISTiledElevationTerrainProvider', terrainName);
 
 /* ---------------------------------------------------------- 3D buildings */
 
@@ -120,16 +203,19 @@ await page.waitForTimeout(12000);
 const gibsState = await page.evaluate(() => {
   const v = window.earthExplorer.viewer;
   const l = v.imageryLayers.get(1);
-  return l
-    ? {
-        provider: l.imageryProvider.constructor.name,
-        colorToAlpha: l.colorToAlpha ? l.colorToAlpha.toCssColorString() : null,
-      }
-    : null;
+  if (!l) return null;
+  const p = l.imageryProvider;
+  return {
+    // The debug handle exposes the provider's own marker; class names are
+    // minified in production builds, so check behaviour instead.
+    isGibs: typeof p.getTime === 'function' && typeof p.setTime === 'function',
+    time: typeof p.getTime === 'function' ? p.getTime() : null,
+    colorToAlpha: l.colorToAlpha ? l.colorToAlpha.toCssColorString() : null,
+  };
 });
 check(
   'NASA GIBS layer added with black-to-alpha',
-  !!gibsState && gibsState.provider === 'GibsImageryProvider' && !!gibsState.colorToAlpha,
+  !!gibsState && gibsState.isGibs && !!gibsState.colorToAlpha,
   JSON.stringify(gibsState),
 );
 
@@ -215,6 +301,7 @@ check('no console errors', realErrors.length === 0, realErrors.slice(0, 3).join(
 
 await page.screenshot({ path: 'test-screenshot.png', fullPage: false });
 await browser.close();
+server?.child.kill();
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

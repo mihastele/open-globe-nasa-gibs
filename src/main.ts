@@ -468,7 +468,9 @@ document.addEventListener('keydown', (event) => {
 
 export { viewer, globe };
 
-// Dev-only handle so the app can be driven from the console (and by tests).
-if (import.meta.env.DEV) {
+// A handle for driving the app from the console and from the e2e tests.
+// Stripped from normal production builds; kept in dev and in the
+// dedicated `e2e` build mode used by `npm run test:prod`.
+if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') {
   (window as unknown as { earthExplorer?: unknown }).earthExplorer = { viewer, globe };
 }
